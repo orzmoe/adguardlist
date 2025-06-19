@@ -1,0 +1,48 @@
+# Title: 5whys Adguard Home Rules List (Use with a lot of false rejects)
+# Verison: 202506191136
+# Expires: around 1 day
+# Total number of rules = 6
+# Below are the links of the adblock rules
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_24.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_32.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_27.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_3.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_6.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_7.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_21.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_29.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_30.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_12.txt
+# https://adguardteam.github.io/HostlistsRegistry/assets/filter_11.txt
+# https://raw.githubusercontent.com/neodevpro/neodevhost/master/adblocker
+# https://raw.githubusercontent.com/cjx82630/cjxlist/master/cjx-annoyance.txt
+# https://easylist-downloads.adblockplus.org/easylistchina.txt
+# https://easylist-downloads.adblockplus.org/easylist.txt
+# https://easylist-downloads.adblockplus.org/easyprivacy.txt
+# https://raw.githubusercontent.com/Cats-Team/AdRules/main/dns.txt
+# https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV-AGH.txt
+# https://anti-ad.net/easylist.txt
+# https://cdn.jsdelivr.net/gh/xinggsf/Adblock-Plus-Rule@master/rule.txt
+# https://raw.githubusercontent.com/VeleSila/yhosts/master/hosts.txt
+# https://raw.githubusercontent.com/jdlingyu/ad-wars/master/hosts
+# https://adaway.org/hosts.txt
+# https://www.i-dont-care-about-cookies.eu/abp/
+# https://filters.adtidy.org/extension/ublock/filters/224.txt
+# https://filter.futa.gg/hosts.txt
+# https://raw.githubusercontent.com/AdguardTeam/cname-trackers/master/data/combined_disguised_ads.txt
+# https://raw.githubusercontent.com/AdguardTeam/cname-trackers/master/data/combined_disguised_clickthroughs.txt
+# https://raw.githubusercontent.com/AdguardTeam/cname-trackers/master/data/combined_disguised_trackers.txt
+# https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt
+# https://raw.githubusercontent.com/Turtlecute33/toolz/refs/heads/master/src/d3host.adblock
+# https://thhbdd.github.io/Block-pcdn-domains/ban.txt
+# https://gcore.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/adblockdns.txt
+####################################################################################
+!
+! Title: Blocklist
+! Last modified: 2025-06-19T03:36:06.004Z
+!
+! Compiled by @adguard/hostlist-compiler v1.0.35
+!
+####################################################################################
