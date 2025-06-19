@@ -32,7 +32,13 @@ jobs:
 
       - name: Create output.txt
         run: |
-          line=$(wc -l < output.txt)
+          # 首先编译规则，生成临时文件
+          hostlist-compiler -i "./setting/rules.txt" -o "./temp_rules.txt"
+          
+          # 统计编译后的规则行数
+          line=$(wc -l < "./temp_rules.txt")
+          
+          # 创建最终的 output.txt 文件
           echo "# Title: 5whys Adguard Home Rules List (Use with a lot of false rejects)" > output.txt
           echo "# Verison: $(date +%Y%m%d%H%M)" >> output.txt
           echo "# Expires: around 1 day" >> output.txt
@@ -40,8 +46,13 @@ jobs:
           echo "# Below are the links of the adblock rules" >> output.txt
           while IFS= read -r line; do echo "# $line" >> output.txt; done < "./setting/rules.txt"
           echo "####################################################################################" >> output.txt
-          cat output.txt >> output.txt
+          
+          # 添加编译后的规则内容
+          cat "./temp_rules.txt" >> output.txt
           echo "####################################################################################" >> output.txt
+          
+          # 清理临时文件
+          rm -f "./temp_rules.txt"
 
       - name: move output file
         run: |
