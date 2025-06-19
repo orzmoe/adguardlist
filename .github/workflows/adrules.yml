@@ -31,11 +31,9 @@ jobs:
         uses: actions/setup-node@v4  # 升级到最新版本
         with:
           node-version: '20'  # 升级到 Node.js 20 LTS
-          cache: 'npm'
 
       - name: Install dependencies
         run: |
-          npm install
           npm install -g @adguard/hostlist-compiler@latest
 
       - name: Set environment variables
