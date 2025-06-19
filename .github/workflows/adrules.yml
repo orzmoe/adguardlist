@@ -46,8 +46,6 @@ jobs:
       - name: Download and merge rules
         id: download
         run: |
-          set -e  # 遇到错误立即退出
-          
           # 创建必要的目录
           mkdir -p temp_downloads publish rules
           
@@ -75,11 +73,11 @@ jobs:
             
             echo "📥 开始下载: $url"
             
-            # 使用更健壮的下载参数
+            # 使用更健壮的下载参数，但不让单个失败影响整体
             if curl -sS -L --connect-timeout 10 --max-time 30 \
                     --retry 3 --retry-delay 2 \
                     -H "User-Agent: Mozilla/5.0 (compatible; AdRulesBot/1.0)" \
-                    "$url" -o "$filename"; then
+                    "$url" -o "$filename" 2>/dev/null; then
               
               # 验证下载的文件
               if [[ -f "$filename" && -s "$filename" ]]; then
@@ -88,12 +86,12 @@ jobs:
                 ((success_count++))
               else
                 echo "❌ 文件为空: $url"
-                rm -f "$filename"
+                rm -f "$filename" 2>/dev/null || true
                 failed_urls+=("$url")
               fi
             else
               echo "❌ 下载失败: $url"
-              rm -f "$filename"
+              rm -f "$filename" 2>/dev/null || true
               failed_urls+=("$url")
             fi
             
@@ -122,10 +120,13 @@ jobs:
           
           # 合并所有下载的规则文件
           echo "🔄 合并规则文件..."
-          cat temp_downloads/*.txt > merged_rules.txt
+          cat temp_downloads/*.txt > merged_rules.txt 2>/dev/null || {
+            echo "❌ 合并规则文件失败"
+            exit 1
+          }
           
           merged_size=$(wc -c < merged_rules.txt)
-          echo "✅ 合并完成: $(ls temp_downloads/*.txt | wc -l) 个文件, 总大小 ${merged_size} bytes"
+          echo "✅ 合并完成: $(ls temp_downloads/*.txt 2>/dev/null | wc -l) 个文件, 总大小 ${merged_size} bytes"
           
           # 保存统计信息
           echo "SUCCESS_COUNT=$success_count" >> $GITHUB_ENV
@@ -134,8 +135,6 @@ jobs:
 
       - name: Compile rules
         run: |
-          set -e
-          
           echo "⚙️  编译规则..."
           
           # 编译规则
@@ -158,8 +157,6 @@ jobs:
 
       - name: Generate output file
         run: |
-          set -e
-          
           echo "📝 生成最终输出文件..."
           
           {
@@ -251,8 +248,6 @@ jobs:
 
       - name: Update release branch
         run: |
-          set -e
-          
           echo "🌿 更新 release 分支..."
           
           cd publish
@@ -291,8 +286,6 @@ jobs:
 
       - name: Update repository
         run: |
-          set -e
-          
           echo "📝 更新仓库文件..."
           
           # 更新日志
