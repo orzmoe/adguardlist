@@ -79,7 +79,7 @@ jobs:
               
               # 验证下载的文件是否成功且非空
               if [[ -f "$filename" && -s "$filename" ]]; then
-                file_size=$(wc -c < "$filename")
+                file_size=$(stat -c%s "$filename")
                 echo "✅ 下载成功: $url (${file_size} bytes)"
                 ((success_count++))
               else
