@@ -5,70 +5,245 @@ on:
   watch:
     types: [started]
   schedule:
-    - cron: 21 */3 * * *
+    - cron: '21 */3 * * *'  # 每3小时运行一次
+  push:
+    paths:
+      - 'setting/rules.txt'  # 当规则源文件更新时自动运行
 
 permissions:
   contents: write
 
+env:
+  TZ: Asia/Shanghai
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # 设置超时时间
+    
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Use Node.js
-        uses: actions/setup-node@v3
+        uses: actions/checkout@v4  # 升级到最新版本
         with:
-          node-version: "12.x"
-      - run: npm install
+          fetch-depth: 0
 
-      - name: Install hostlist-complier
-        run: npm i -g @adguard/hostlist-compiler@v1.0.35
+      - name: Setup Node.js
+        uses: actions/setup-node@v4  # 升级到最新版本
+        with:
+          node-version: '20'  # 升级到 Node.js 20 LTS
+          cache: 'npm'
 
-      - name: Set folder condition, variables and timezone
+      - name: Install dependencies
         run: |
-          sudo cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-          echo "RELEASE_NAME=Released on $(date +%Y%m%d%H%M)" >> $GITHUB_ENV
-          echo "TAG_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
-          rm -f ./out*.txt
+          npm install
+          npm install -g @adguard/hostlist-compiler@latest
 
-      - name: Create output.txt
+      - name: Set environment variables
         run: |
-          # 首先编译规则，生成临时文件
-          hostlist-compiler -i "./setting/rules.txt" -o "./temp_rules.txt"
-          
-          # 统计编译后的规则行数
-          line=$(wc -l < "./temp_rules.txt")
-          
-          # 创建最终的 output.txt 文件
-          echo "# Title: 5whys Adguard Home Rules List (Use with a lot of false rejects)" > output.txt
-          echo "# Verison: $(date +%Y%m%d%H%M)" >> output.txt
-          echo "# Expires: around 1 day" >> output.txt
-          echo "# Total number of rules = $line" >> output.txt
-          echo "# Below are the links of the adblock rules" >> output.txt
-          while IFS= read -r line; do echo "# $line" >> output.txt; done < "./setting/rules.txt"
-          echo "####################################################################################" >> output.txt
-          
-          # 添加编译后的规则内容
-          cat "./temp_rules.txt" >> output.txt
-          echo "####################################################################################" >> output.txt
-          
-          # 清理临时文件
-          rm -f "./temp_rules.txt"
+          echo "RELEASE_NAME=Released on $(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+          echo "TAG_NAME=$(date '+%Y%m%d%H%M')" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date -Iseconds)" >> $GITHUB_ENV
+          echo "RULES_COUNT=0" >> $GITHUB_ENV
 
-      - name: move output file
+      - name: Download and merge rules
+        id: download
         run: |
-          mkdir -p ./publish/
-          mkdir -p ./rules/
-          cp ./output.txt ./publish/
-          cp ./output.txt ./rules/
+          set -e  # 遇到错误立即退出
+          
+          # 创建必要的目录
+          mkdir -p temp_downloads publish rules
+          
+          # 清理旧文件
+          rm -f ./out*.txt ./temp_*.txt ./merged_*.txt
+          
+          echo "🚀 开始下载规则文件..."
+          download_count=0
+          success_count=0
+          failed_urls=()
+          
+          # 并行下载优化：分批处理
+          batch_size=5
+          temp_files=()
+          
+          while IFS= read -r url; do
+            # 跳过空行和注释
+            if [[ -z "$url" || "$url" =~ ^[[:space:]]*# ]]; then
+              continue
+            fi
+            
+            url=$(echo "$url" | tr -d '\r\n ')  # 清理URL
+            filename="temp_downloads/rules_${download_count}.txt"
+            temp_files+=("$filename")
+            
+            echo "📥 开始下载: $url"
+            
+            # 使用更健壮的下载参数
+            if curl -sS -L --connect-timeout 10 --max-time 30 \
+                    --retry 3 --retry-delay 2 \
+                    -H "User-Agent: Mozilla/5.0 (compatible; AdRulesBot/1.0)" \
+                    "$url" -o "$filename"; then
+              
+              # 验证下载的文件
+              if [[ -f "$filename" && -s "$filename" ]]; then
+                file_size=$(wc -c < "$filename")
+                echo "✅ 下载成功: $url (${file_size} bytes)"
+                ((success_count++))
+              else
+                echo "❌ 文件为空: $url"
+                rm -f "$filename"
+                failed_urls+=("$url")
+              fi
+            else
+              echo "❌ 下载失败: $url"
+              rm -f "$filename"
+              failed_urls+=("$url")
+            fi
+            
+            ((download_count++))
+            
+            # 控制并发
+            if (( download_count % batch_size == 0 )); then
+              sleep 1
+            fi
+          done < "./setting/rules.txt"
+          
+          echo "📊 下载统计: 成功 $success_count/$download_count"
+          
+          # 报告失败的URL
+          if [[ ${#failed_urls[@]} -gt 0 ]]; then
+            echo "⚠️  以下 ${#failed_urls[@]} 个URL下载失败:"
+            printf '  - %s\n' "${failed_urls[@]}"
+          fi
+          
+          # 检查是否有成功下载的文件
+          downloaded_files=(temp_downloads/*.txt)
+          if [[ ! -f "${downloaded_files[0]}" ]]; then
+            echo "❌ 错误: 没有成功下载任何规则文件"
+            exit 1
+          fi
+          
+          # 合并所有下载的规则文件
+          echo "🔄 合并规则文件..."
+          cat temp_downloads/*.txt > merged_rules.txt
+          
+          merged_size=$(wc -c < merged_rules.txt)
+          echo "✅ 合并完成: $(ls temp_downloads/*.txt | wc -l) 个文件, 总大小 ${merged_size} bytes"
+          
+          # 保存统计信息
+          echo "SUCCESS_COUNT=$success_count" >> $GITHUB_ENV
+          echo "TOTAL_COUNT=$download_count" >> $GITHUB_ENV
+          echo "FAILED_COUNT=${#failed_urls[@]}" >> $GITHUB_ENV
 
-      - name: Release and upload assets
-        uses: softprops/action-gh-release@v2.3.2
+      - name: Compile rules
+        run: |
+          set -e
+          
+          echo "⚙️  编译规则..."
+          
+          # 编译规则
+          if ! hostlist-compiler -i "merged_rules.txt" -o "temp_rules.txt"; then
+            echo "❌ 规则编译失败"
+            exit 1
+          fi
+          
+          # 验证编译结果
+          if [[ ! -f "temp_rules.txt" ]]; then
+            echo "❌ 编译输出文件不存在"
+            exit 1
+          fi
+          
+          # 统计规则数量（排除注释和空行）
+          rules_count=$(grep -c -v -E '^[[:space:]]*(!|$)' temp_rules.txt || echo "0")
+          echo "📝 编译完成，包含 $rules_count 条有效规则"
+          
+          echo "RULES_COUNT=$rules_count" >> $GITHUB_ENV
+
+      - name: Generate output file
+        run: |
+          set -e
+          
+          echo "📝 生成最终输出文件..."
+          
+          {
+            echo "# Title: 5whys Adguard Home Rules List (Use with a lot of false rejects)"
+            echo "# Version: $(date '+%Y%m%d%H%M')"
+            echo "# Generated: $BUILD_TIME"
+            echo "# Expires: 12 hours"
+            echo "# Total sources: $TOTAL_COUNT (Success: $SUCCESS_COUNT, Failed: $FAILED_COUNT)"
+            echo "# Total rules: $RULES_COUNT"
+            echo "# Homepage: https://github.com/${{ github.repository }}"
+            echo "#"
+            echo "# Source URLs:"
+            
+            while IFS= read -r line; do 
+              if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# ]]; then
+                echo "# - $line"
+              fi
+            done < "./setting/rules.txt"
+            
+            echo "#"
+            echo "####################################################################################"
+            echo
+            
+            # 添加编译后的规则内容
+            cat temp_rules.txt
+            
+            echo
+            echo "####################################################################################"
+            echo "# Generated by GitHub Actions on $BUILD_TIME"
+            echo "# Repository: https://github.com/${{ github.repository }}"
+            echo "####################################################################################"
+            
+          } > output.txt
+          
+          # 验证输出文件
+          output_size=$(wc -c < output.txt)
+          echo "✅ 输出文件生成完成: ${output_size} bytes"
+          
+          # 显示文件预览
+          echo "📋 文件前10行预览:"
+          head -10 output.txt
+
+      - name: Prepare release files
+        run: |
+          # 复制文件到发布目录
+          cp output.txt publish/
+          cp output.txt rules/
+          
+          # 生成额外的格式
+          cp output.txt publish/adguard-rules.txt
+          cp output.txt rules/adguard-rules.txt
+          
+          echo "📦 发布文件准备完成"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{ env.RELEASE_NAME }}
           tag_name: ${{ env.TAG_NAME }}
+          body: |
+            🚀 **AdGuard Rules List Update**
+            
+            **📊 Statistics:**
+            - 📥 Total Sources: ${{ env.TOTAL_COUNT }}
+            - ✅ Successful Downloads: ${{ env.SUCCESS_COUNT }}
+            - ❌ Failed Downloads: ${{ env.FAILED_COUNT }}
+            - 📝 Total Rules: ${{ env.RULES_COUNT }}
+            - 🕒 Generated: ${{ env.BUILD_TIME }}
+            
+            **📁 Files:**
+            - `output.txt` - Main rules file
+            - `adguard-rules.txt` - Alternative filename
+            
+            **🔗 Usage:**
+            ```
+            https://github.com/${{ github.repository }}/releases/latest/download/output.txt
+            ```
+            
+            Or via CDN:
+            ```
+            https://cdn.jsdelivr.net/gh/${{ github.repository }}@release/output.txt
+            ```
           draft: false
           prerelease: false
           files: |
@@ -76,30 +251,91 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Git push assets to "release" branch
+      - name: Update release branch
         run: |
-          cd publish || exit 1
+          set -e
+          
+          echo "🌿 更新 release 分支..."
+          
+          cd publish
           git init
           git config --local user.name "github-actions[bot]"
           git config --local user.email "121651775+github-actions[bot]@users.noreply.github.com"
           git checkout -b release
           git add .
-          git commit -m "${{ env.RELEASE_NAME }}"
+          git commit -m "🚀 ${{ env.RELEASE_NAME }}
+
+          📊 Statistics:
+          - Sources: ${{ env.SUCCESS_COUNT }}/${{ env.TOTAL_COUNT }}
+          - Rules: ${{ env.RULES_COUNT }}
+          - Generated: ${{ env.BUILD_TIME }}"
+          
           git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           git push -f -u origin release
+          
+          echo "✅ Release 分支更新完成"
 
-      - name: Purge jsdelivr CDN
+      - name: Purge CDN cache
         run: |
-          cd publish || exit 1
-          for file in $(ls); do
-            curl -i "https://purge.jsdelivr.net/gh/${{ github.repository }}@release/${file}"
+          echo "🔄 清理 CDN 缓存..."
+          
+          urls=(
+            "https://purge.jsdelivr.net/gh/${{ github.repository }}@release/output.txt"
+            "https://purge.jsdelivr.net/gh/${{ github.repository }}@release/adguard-rules.txt"
+          )
+          
+          for url in "${urls[@]}"; do
+            echo "清理: $url"
+            curl -sS "$url" || echo "清理失败: $url"
           done
+          
+          echo "✅ CDN 缓存清理完成"
 
-      - name: Commit *.txt
+      - name: Update repository
         run: |
-          echo `date +"%Y-%m-%d %H:%M:%S"` ZJC CKC >> ./rules/date.log
+          set -e
+          
+          echo "📝 更新仓库文件..."
+          
+          # 更新日志
+          echo "$(date '+%Y-%m-%d %H:%M:%S') - Rules: ${{ env.RULES_COUNT }}, Sources: ${{ env.SUCCESS_COUNT }}/${{ env.TOTAL_COUNT }}" >> ./rules/date.log
+          
+          # 配置 Git
           git config --global user.email "121651775+github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
+          
+          # 提交更改
           git add ./rules/output* ./rules/date.log
-          git commit -m "${{ env.RELEASE_NAME }}"
-          git push
+          
+          if git diff --staged --quiet; then
+            echo "ℹ️  没有需要提交的更改"
+          else
+            git commit -m "📊 ${{ env.RELEASE_NAME }}
+
+            - Rules: ${{ env.RULES_COUNT }}
+            - Sources: ${{ env.SUCCESS_COUNT }}/${{ env.TOTAL_COUNT }}
+            - Failed: ${{ env.FAILED_COUNT }}
+            - Size: $(wc -c < rules/output.txt) bytes"
+            
+            git push
+            echo "✅ 仓库更新完成"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "🧹 清理临时文件..."
+          rm -rf temp_downloads merged_rules.txt temp_rules.txt
+          echo "✅ 清理完成"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "📋 === 构建总结 ==="
+          echo "🕒 构建时间: ${{ env.BUILD_TIME }}"
+          echo "📊 规则源总数: ${{ env.TOTAL_COUNT }}"
+          echo "✅ 成功下载: ${{ env.SUCCESS_COUNT }}"
+          echo "❌ 下载失败: ${{ env.FAILED_COUNT }}"
+          echo "📝 生成规则: ${{ env.RULES_COUNT }}"
+          echo "🏷️  发布标签: ${{ env.TAG_NAME }}"
+          echo "=================="
