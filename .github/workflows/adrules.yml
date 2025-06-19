@@ -47,21 +47,19 @@ jobs:
         id: download
         shell: bash
         run: |
+          set -x  # 启用调试模式，打印所有执行的命令
+          
           # 创建必要的目录
           mkdir -p temp_downloads publish rules
-
+          
           # 清理旧文件
           rm -f ./out*.txt ./temp_*.txt ./merged_*.txt
-
+          
           echo "🚀 开始下载规则文件..."
           download_count=0
           success_count=0
           failed_urls=()
-
-          # 并行下载优化：分批处理
-          batch_size=5
-          temp_files=()
-
+          
           while IFS= read -r url; do
             # 跳过空行和注释
             if [[ -z "$url" || "$url" =~ ^[[:space:]]*# ]]; then
@@ -70,65 +68,59 @@ jobs:
             
             url=$(echo "$url" | tr -d '\r\n ')  # 清理URL
             filename="temp_downloads/rules_${download_count}.txt"
-            temp_files+=("$filename")
             
             echo "📥 开始下载: $url"
             
-            # 使用更健壮的下载参数，但不让单个失败影响整体
-            if curl -sS -L --connect-timeout 10 --max-time 30 \
+            # 使用更健壮的下载参数
+            if curl -sS -L --connect-timeout 10 --max-time 45 \
                     --retry 3 --retry-delay 2 \
                     -H "User-Agent: Mozilla/5.0 (compatible; AdRulesBot/1.0)" \
-                    "$url" -o "$filename" 2>/dev/null; then
+                    "$url" -o "$filename"; then
               
-              # 验证下载的文件
+              # 验证下载的文件是否成功且非空
               if [[ -f "$filename" && -s "$filename" ]]; then
                 file_size=$(wc -c < "$filename")
                 echo "✅ 下载成功: $url (${file_size} bytes)"
                 ((success_count++))
               else
-                echo "❌ 文件为空: $url"
+                echo "❌ 文件为空或下载失败: $url"
                 rm -f "$filename" 2>/dev/null || true
                 failed_urls+=("$url")
               fi
             else
-              echo "❌ 下载失败: $url"
+              echo "❌ Curl 命令本身失败，退出码: $?. URL: $url"
               rm -f "$filename" 2>/dev/null || true
               failed_urls+=("$url")
             fi
             
             ((download_count++))
-            
-            # 控制并发
-            if (( download_count % batch_size == 0 )); then
-              sleep 1
-            fi
           done < "./setting/rules.txt"
-
+          
           echo "📊 下载统计: 成功 $success_count/$download_count"
-
+          
           # 报告失败的URL
           if [[ ${#failed_urls[@]} -gt 0 ]]; then
             echo "⚠️  以下 ${#failed_urls[@]} 个URL下载失败:"
             printf '  - %s\n' "${failed_urls[@]}"
           fi
-
+          
           # 检查是否有成功下载的文件
           downloaded_files=(temp_downloads/*.txt)
           if [[ ! -f "${downloaded_files[0]}" ]]; then
-            echo "❌ 错误: 没有成功下载任何规则文件"
+            echo "❌ 错误: 没有成功下载任何规则文件，流程终止"
             exit 1
           fi
-
+          
           # 合并所有下载的规则文件
           echo "🔄 合并规则文件..."
           cat temp_downloads/*.txt > merged_rules.txt 2>/dev/null || {
             echo "❌ 合并规则文件失败"
             exit 1
           }
-
+          
           merged_size=$(wc -c < merged_rules.txt)
           echo "✅ 合并完成: $(ls temp_downloads/*.txt 2>/dev/null | wc -l) 个文件, 总大小 ${merged_size} bytes"
-
+          
           # 保存统计信息
           echo "SUCCESS_COUNT=$success_count" >> $GITHUB_ENV
           echo "TOTAL_COUNT=$download_count" >> $GITHUB_ENV
