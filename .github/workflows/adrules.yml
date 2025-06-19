@@ -57,6 +57,7 @@ jobs:
       - name: move output file
         run: |
           mkdir -p ./publish/
+          mkdir -p ./rules/
           cp ./output.txt ./publish/
           cp ./output.txt ./rules/
 
