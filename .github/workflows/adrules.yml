@@ -1,0 +1,90 @@
+name: sync-adrules
+
+on:
+  workflow_dispatch:
+  watch:
+    types: [started]
+  schedule:
+    - cron: 21 */3 * * *
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "12.x"
+      - run: npm install
+
+      - name: Install hostlist-complier
+        run: npm i -g @adguard/hostlist-compiler@v1.0.35
+
+      - name: Set folder condition, variables and timezone
+        run: |
+          sudo cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+          echo "RELEASE_NAME=Released on $(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+          echo "TAG_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+          rm -f ./out*.txt
+
+      - name: Create output.txt
+        run: |
+          line=$(wc -l < output.txt)
+          echo "# Title: 5whys Adguard Home Rules List (Use with a lot of false rejects)" > output.txt
+          echo "# Verison: $(date +%Y%m%d%H%M)" >> output.txt
+          echo "# Expires: around 1 day" >> output.txt
+          echo "# Total number of rules = $line" >> output.txt
+          echo "# Below are the links of the adblock rules" >> output.txt
+          while IFS= read -r line; do echo "# $line" >> output.txt; done < "./setting/rules.txt"
+          echo "####################################################################################" >> output.txt
+          cat output.txt >> output.txt
+          echo "####################################################################################" >> output.txt
+
+      - name: move output file
+        run: |
+          mkdir -p ./publish/
+          cp ./output.txt ./publish/
+          cp ./output.txt ./rules/
+
+      - name: Release and upload assets
+        uses: softprops/action-gh-release@v2.3.2
+        with:
+          name: ${{ env.RELEASE_NAME }}
+          tag_name: ${{ env.TAG_NAME }}
+          draft: false
+          prerelease: false
+          files: |
+            ./publish/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Git push assets to "release" branch
+        run: |
+          cd publish || exit 1
+          git init
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "121651775+github-actions[bot]@users.noreply.github.com"
+          git checkout -b release
+          git add .
+          git commit -m "${{ env.RELEASE_NAME }}"
+          git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git push -f -u origin release
+
+      - name: Purge jsdelivr CDN
+        run: |
+          cd publish || exit 1
+          for file in $(ls); do
+            curl -i "https://purge.jsdelivr.net/gh/${{ github.repository }}@release/${file}"
+          done
+
+      - name: Commit *.txt
+        run: |
+          echo `date +"%Y-%m-%d %H:%M:%S"` ZJC CKC >> ./rules/date.log
+          git config --global user.email ${{ secrets.EMAIL }}
+          git config --global user.name ${{ secrets.NAME }}
+          git add ./rules/output* ./rules/date.log
+          git commit -m "${{ env.RELEASE_NAME }}"
+          git push
