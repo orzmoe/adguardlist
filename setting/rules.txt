@@ -34,3 +34,4 @@ https://raw.githubusercontent.com/Turtlecute33/toolz/refs/heads/master/src/d3hos
 https://thhbdd.github.io/Block-pcdn-domains/ban.txt
 https://gcore.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/adblockdns.txt
 https://cdn.jsdelivr.net/gh/o0HalfLife0o/list@master/ad.txt
+https://ruleset.skk.moe/Internal/reject-adguardhome.txt
