@@ -5,7 +5,7 @@ on:
   watch:
     types: [started]
   schedule:
-    - cron: "21 */3 * * *" # 每3小时运行一次
+    - cron: "21 */18 * * *" # 每3小时运行一次
   push:
     paths:
       - "setting/rules.txt" # 当规则源文件更新时自动运行
